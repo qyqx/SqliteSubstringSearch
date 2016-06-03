@@ -24,10 +24,15 @@
 //
 // Implementation of the "simple" full-text-search tokenizer.
 
-#include <sqlite3.h>
 #include <ctype.h> //for tolower
 #include <string.h> //for memset
-#import "character_tokenizer.h"
+
+//#include "sqlite3.h"
+#include "sqlite3ext.h"
+SQLITE_EXTENSION_INIT1
+
+#include "fts3_tokenizer.h"
+#include "character_tokenizer.h"
 
 typedef struct character_tokenizer {
     sqlite3_tokenizer base;
@@ -169,3 +174,46 @@ void get_character_tokenizer_module(const sqlite3_tokenizer_module **ppModule){
     *ppModule = &characterTokenizerModule;
 }
 
+/*
+ ** Register a tokenizer implementation with FTS3 or FTS4.
+ */
+static int registerTokenizer(
+                             sqlite3 *db,
+                             char *zName,
+                             const sqlite3_tokenizer_module *p
+                             ){
+    int rc;
+    sqlite3_stmt *pStmt;
+    const char *zSql = "SELECT fts3_tokenizer(?, ?)";
+    
+    rc = sqlite3_prepare_v2(db, zSql, -1, &pStmt, 0);
+    if( rc!=SQLITE_OK ){
+        return rc;
+    }
+    
+    sqlite3_bind_text(pStmt, 1, zName, -1, SQLITE_STATIC);
+    sqlite3_bind_blob(pStmt, 2, &p, sizeof(p), SQLITE_STATIC);
+    sqlite3_step(pStmt);
+    
+    return sqlite3_finalize(pStmt);
+}
+
+/* int sqlite3_extension_init( sqlite3 *db, char **pzErrMsg, const sqlite3_api_routines *pApi )  */
+/* { */
+/*      //SQLITE_EXTENSION_INIT2(pApi) */
+/* 	return registerTokenizer(db, "character_token", &characterTokenizerModule); */
+/* } */
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+int sqlite3_charactertokenizer_init( /* <== Change this name, maybe */
+  sqlite3 *db, 
+  char **pzErrMsg, 
+  const sqlite3_api_routines *pApi
+){
+  int rc = SQLITE_OK;
+  SQLITE_EXTENSION_INIT2(pApi);
+  /* insert code to initialize your extension here */
+  rc = registerTokenizer(db, "character_token", &characterTokenizerModule);
+  return rc;
+}
